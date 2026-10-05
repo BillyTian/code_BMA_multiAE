@@ -1,0 +1,50 @@
+# JAGS model: separate binomial analysis with horseshoe priors.
+# Y_A and Y_B are AE counts for treatments A and B, respectively.
+model
+{
+  # Prior distributions
+  tau_study ~ dt(0, 1, 1)T(0,)
+  tau_INT ~ dt(0, 1, 1)T(0,)
+  mu_study ~ dnorm(0, 1/10^2)
+
+  # Horseshoe prior for AE-specific log odds ratios
+  tau ~ dt(0, 1, 1)T(0,)
+  for (k in 1:n_AE){
+    lambda[k] ~ dt(0, 1, 1)T(0,)
+    alpha[k] ~ dnorm(0, pow(lambda[k]*tau, -2))T(-5,5)
+
+    OR[k] <- exp( alpha[k] )
+
+    u_AE[k] ~ dnorm(0, 1/10^2)
+    
+    for (i in 1:n_study){
+    	u_INT[i,k] ~ dnorm(u_AE[k], pow(tau_INT, -2))
+    }
+    
+    pA_AE[k] <- ilogit( mu_study + u_AE[k] )
+    logit(pB_AE[k]) <- logit(pA_AE[k]) + alpha[k]
+  }
+
+  for (i in 1:n_study){
+    u_study[i] ~ dnorm(mu_study, pow(tau_study,-2))
+  }
+
+  # Linear predictors for fully observed outcomes
+  for (j in 1:(J1_A)){  
+    p_A.adj[j] <- max(1e-300, min(pA[j], 1-(1e-300)))
+    logit(pA[j]) <- u_study[study_A[j]] + u_INT[study_A[j], AE_A[j]]
+  }
+  for (j in 1:(J1_B)){
+    p_B.adj[j] <- max(1e-300, min(pB[j], 1-(1e-300)))
+    logit(pB[j]) <- u_study[study_B[j]] + u_INT[study_B[j], AE_B[j]] + alpha[AE_B[j]]
+  }  
+ 
+  # Likelihood
+  for (j in 1:J1_A){  
+    Y_A[j] ~ dbin(p_A.adj[j], N_A[j])
+  }
+  for (j in 1:J1_B){  
+    Y_B[j] ~ dbin(p_B.adj[j], N_B[j]) 
+  }
+
+}
